@@ -47,4 +47,6 @@ export interface Conversations {
   soures: string
   unreadCount?: number
   _selected?: boolean
+  bgImage?: string
+  remark?: string
 }

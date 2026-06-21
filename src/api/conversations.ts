@@ -25,5 +25,9 @@ export const conversationsApi = {
 
   batchSave(conversations: Conversations[]) {
     return request.put('/conversations/batch/save', conversations)
+  },
+
+  updateRemark(conversationId: string, remark: string) {
+    return request.put(`/conversations/${conversationId}/remark`, { remark })
   }
 }

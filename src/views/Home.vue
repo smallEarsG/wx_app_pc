@@ -22,7 +22,7 @@
             <el-checkbox :indeterminate="isIndeterminate" :model-value="isAllSelected" @change="handleSelectAll">全选</el-checkbox>
           </div>
           <el-list v-loading="loading" :data="conversations" class="conversation-list">
-            <el-list-item v-for="item in conversations" :key="item.conversationId" @click="selectConversation(item)" :class="{ 'active': selectedId === item.conversationId }">
+            <el-list-item v-for="item in conversations" :key="item.conversationId" @click="selectConversation(item)" @dblclick.stop="openRemarkModal(item)" :class="{ 'active': selectedId === item.conversationId }">
               <template #default>
                 <div class="conversation-item">
                   <el-checkbox v-model="item._selected" @change="(val) => handleSelectItem(item.conversationId, val)" @click.stop></el-checkbox>
@@ -35,6 +35,7 @@
                   <div class="conversation-content">
                     <div class="conversation-header">
                       <span class="conversation-name">{{ item.name }}</span>
+                      <span v-if="item.remark" class="remark-ellipsis">({{ item.remark }})</span>
                     </div>
                   </div>
                   <div class="conversation-time">{{ item.createdAt }}</div>
@@ -62,7 +63,7 @@
                     <div class="message-content-wrapper">
                       <div v-if="msg.from" class="message-sender">{{ msg.from }}</div>
                       <div class="message-bubble">
-                        <span class="message-tag" v-if="msg.label">{{ msg.label }}</span>
+                        <span class="message-tag" v-if="msg.label">{{ msg.label }}11</span>
                         <div v-if="msg.label === '图片消息'" :key="'img-' + index">
                           <div v-if="editingIndex === index" class="message-edit">
                             <input ref="editInputRef" v-model="editingContent" class="edit-input" @keydown="handleKeydown" @blur="handleBlur" />
@@ -117,6 +118,7 @@
               <div v-for="msg in quickMessages" :key="msg.id" class="quick-message-item" @click="insertQuickMessage(msg)">
                 <span class="quick-msg-type" :class="msg.messageType">{{ msg.messageType === 'text' ? '文本' : '图片' }}</span>
                 <span class="quick-msg-content">{{ msg.messageType === 'image' ? '[图片]' : msg.messageContent }}</span>
+                <span class="quick-msg-delete" @click.stop="deleteQuickMessage(msg.id)" title="删除">×</span>
               </div>
               <p v-if="quickMessages.length === 0" class="no-quick-messages">暂无快捷消息</p>
             </div>
@@ -144,6 +146,20 @@
           <span class="dialog-footer">
             <el-button @click="addQuickMessageVisible = false">取消</el-button>
             <el-button type="primary" @click="saveQuickMessage">保存</el-button>
+          </span>
+        </template>
+      </el-dialog>
+
+      <el-dialog title="修改备注" v-model="remarkModalVisible" width="400px" @close="resetRemarkForm">
+        <el-form :model="remarkForm" label-width="80px">
+          <el-form-item label="备注">
+            <el-input v-model="remarkForm.remark" type="textarea" :rows="3" placeholder="请输入备注内容" maxlength="255" show-word-limit />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="remarkModalVisible = false">取消</el-button>
+            <el-button type="primary" @click="saveRemark">保存</el-button>
           </span>
         </template>
       </el-dialog>
@@ -292,7 +308,7 @@ import { conversationsApi } from '../api/conversations'
 import { fileApi } from '../api/file'
 import { quickMessagesApi, type QuickMessage } from '../api/quickMessages'
 import type { Conversations } from '../types/api'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { parseMessageContent, type FormattedMessage } from '../utils/messageFormatter'
 import { formatMessageContent, type MessageItem } from '../utils/messageFormatter'
 import MessageEditor from '../components/MessageEditor.vue'
@@ -308,6 +324,9 @@ const selectedIds = ref<string[]>([])
 
 const batchEditVisible = ref(false)
 const batchEditForm = reactive({ createdAt: '', soures: '', addTime: '' })
+
+const remarkModalVisible = ref(false)
+const remarkForm = reactive({ conversationId: '', remark: '' })
 
 const batchInsertVisible = ref(false)
 const showBatchQuote = ref(false)
@@ -689,11 +708,53 @@ const insertQuickMessage = (msg: QuickMessage) => {
   handleInsertMessage(message)
 }
 
+const deleteQuickMessage = async (id: number | undefined) => {
+  if (!id) return
+  try {
+    await ElMessageBox.confirm('确定要删除这条快捷消息吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await quickMessagesApi.delete(id)
+    ElMessage.success('删除成功')
+    fetchQuickMessages()
+  } catch (e: unknown) {
+    if (e !== 'cancel') {
+      ElMessage.error(e instanceof Error ? e.message : '删除失败')
+    }
+  }
+}
+
 const openAddQuickMessageModal = () => { addQuickMessageVisible.value = true }
 const resetQuickMessageForm = () => { quickMessageForm.messageType = 'text'; quickMessageForm.messageContent = '' }
 
 const openBatchEditModal = () => { if (selectedIds.value.length > 0) batchEditVisible.value = true }
 const resetBatchEditForm = () => { batchEditForm.createdAt = ''; batchEditForm.soures = ''; batchEditForm.addTime = '' }
+
+const openRemarkModal = (item: Conversations) => {
+  remarkForm.conversationId = item.conversationId
+  remarkForm.remark = item.remark || ''
+  remarkModalVisible.value = true
+}
+const resetRemarkForm = () => {
+  remarkForm.conversationId = ''
+  remarkForm.remark = ''
+}
+const saveRemark = async () => {
+  try {
+    await conversationsApi.updateRemark(remarkForm.conversationId, remarkForm.remark)
+    ElMessage.success('备注修改成功')
+    const target = conversations.value.find(c => c.conversationId === remarkForm.conversationId)
+    if (target) target.remark = remarkForm.remark
+    if (selectedConversation.value?.conversationId === remarkForm.conversationId) {
+      selectedConversation.value.remark = remarkForm.remark
+    }
+    remarkModalVisible.value = false
+  } catch {
+    ElMessage.error('备注修改失败')
+  }
+}
 
 const submitBatchEdit = async () => {
   try {
@@ -775,6 +836,7 @@ onMounted(() => {
   flex-direction: column;
   background-color: #f0f2f5;
   transition: var(--transition-all);
+  overflow: hidden;
 }
 
 .home-header {
@@ -820,7 +882,7 @@ onMounted(() => {
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 
-.home-main { flex: 1; padding: 24px; display: flex; gap: 16px; min-height: 0; transition: var(--transition-all); }
+.home-main { flex: 1; padding: 24px; display: flex; gap: 16px; min-height: 0; transition: var(--transition-all);overflow: hidden;box-sizing: border-box; }
 .control-split { flex: 1; display: flex; gap: 16px; min-height: 0; transition: var(--transition-all); }
 
 .control-split-left, .control-split-right, .right-panel {
@@ -833,21 +895,18 @@ onMounted(() => {
   transition: var(--transition-all);
 }
 
-.control-split-left:hover, .control-split-right:hover, .right-panel:hover {
-  transform: scale(1.01);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
 
-.control-split-left { width: 30%; flex-shrink: 0; }
-.control-split-right { width: 50%; flex-shrink: 0; }
-.right-panel { width: 25%; flex-shrink: 0; }
+
+.control-split-left {flex: 2; flex-shrink: 0; box-sizing: border-box; }
+.control-split-right { flex: 4; flex-shrink: 0;box-sizing: border-box;  }
+.right-panel { flex: 1; flex-shrink: 0; box-sizing: border-box; }
 
 .panel-header { padding: 16px 20px; background: linear-gradient(135deg, #f8f9fc 0%, #f0f2f5 100%); border-bottom: 1px solid #ebeef5; transition: var(--transition-all); }
 .panel-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
 
 .list-header { padding: 12px 16px; border-bottom: 1px solid #ebeef5; background-color: #fafafa; transition: var(--transition-all); }
 
-.conversation-list { flex: 1; overflow-y: auto; min-height: 0; transition: var(--transition-all); }
+.conversation-list { flex: 1; overflow-y: auto; min-height: 0; transition: var(--transition-all);padding: 0 20px; }
 
 .conversation-list .el-list-item {
   cursor: pointer;
@@ -886,12 +945,13 @@ onMounted(() => {
 .conversation-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .conversation-header { display: flex; align-items: center; gap: 8px; }
 .conversation-name { font-size: 14px; font-weight: 500; color: #303133; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remark-ellipsis { font-size: 12px; color: #020202; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; font-weight: 500; }
 .conversation-time { font-size: 12px; color: #909399; flex-shrink: 0; white-space: nowrap; }
 
 .no-conversation { flex: 1; display: flex; align-items: center; justify-content: center; color: #909399; font-size: 14px; }
 
 .message-content-section { flex: 1; margin: 8px 0; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; }
-.message-list { padding: 8px 12px; display: flex; flex-direction: column; gap: 16px; }
+.message-list { padding:0 12px; display: flex; flex-direction: column; gap: 16px; height: 600px;}
 
 .message-item {
   display: flex;
@@ -1277,6 +1337,30 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   transition: var(--transition-fast);
+}
+
+.quick-msg-delete {
+  margin-left: 8px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #909399;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+  opacity: 0;
+}
+
+.quick-message-item:hover .quick-msg-delete { opacity: 1; }
+
+.quick-msg-delete:hover {
+  background-color: #fef0f0;
+  color: #f56c6c;
+  transform: scale(1.1);
 }
 
 .no-quick-messages { text-align: center; color: #909399; font-size: 13px; padding: 20px 0; margin: 0; }

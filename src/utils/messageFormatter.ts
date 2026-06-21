@@ -17,6 +17,7 @@ export interface QuoteInfo {
 }
 
 export interface FormattedMessage {
+  type: 'tips' | 'content'
   label: string
   content: string
   from?: string
@@ -60,6 +61,7 @@ const tipTypeLabels: Record<string, string> = {
  * 获取 contentType 的中文标签
  */
 export function getContentTypeLabel(contentType: string): string {
+  if (!contentType) return '未知消息'
   return contentTypeLabels[contentType] || contentType
 }
 
@@ -88,6 +90,7 @@ export function formatMessageContent(message: MessageItem): FormattedMessage {
   // 处理 tips 类型消息（系统提示，不需要来源）
   if (type === 'tips') {
     return {
+      type: 'tips',
       label: '提示',
       content: typeof content === 'string' ? content : JSON.stringify(content)
     }
@@ -104,7 +107,7 @@ export function formatMessageContent(message: MessageItem): FormattedMessage {
     } else {
       formattedContent = JSON.stringify(content)
     }
-    return { label, content: formattedContent }
+    return { type: 'content', label, content: formattedContent }
   }
 
   // 根据不同类型格式化内容
@@ -192,7 +195,7 @@ export function formatMessageContent(message: MessageItem): FormattedMessage {
       formattedContent = typeof content === 'string' ? content : JSON.stringify(content)
   }
 
-  const result: FormattedMessage = { label, content: formattedContent }
+  const result: FormattedMessage = { type: 'content', label, content: formattedContent }
 
   // 添加消息来源
   if (from !== undefined) {
@@ -233,7 +236,7 @@ export function parseMessageContent(content: unknown): FormattedMessage[] {
       parsedContent = JSON.parse(content)
     } catch {
       // 如果解析失败，作为普通文本处理
-      return [{ label: '文本消息', content: content }]
+      return [{ type: 'content', label: '文本消息', content: content }]
     }
   }
 
@@ -266,5 +269,5 @@ export function parseMessageContent(content: unknown): FormattedMessage[] {
   }
 
   // 其他情况，返回原始内容的字符串形式
-  return [{ label: '内容', content: String(content) }]
+  return [{ type: 'content', label: '内容', content: String(content) }]
 }
