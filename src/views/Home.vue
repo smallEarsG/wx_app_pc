@@ -25,7 +25,7 @@
             <el-list-item v-for="item in conversations" :key="item.conversationId" @click="selectConversation(item)" @dblclick.stop="openRemarkModal(item)" :class="{ 'active': selectedId === item.conversationId }">
               <template #default>
                 <div class="conversation-item">
-                  <el-checkbox v-model="item._selected" @change="(val) => handleSelectItem(item.conversationId, val)" @click.stop></el-checkbox>
+                  <el-checkbox v-model="item._selected" @change="(val: boolean) => handleSelectItem(item.conversationId, val)" @click.stop></el-checkbox>
                   <div class="avatar-wrapper">
                     <el-avatar :src="item.avatarUrl" class="conversation-avatar">
                       <span class="avatar-text">{{ item.name?.charAt(0) || '?' }}</span>
@@ -63,7 +63,7 @@
                     <div class="message-content-wrapper">
                       <div v-if="msg.from" class="message-sender">{{ msg.from }}</div>
                       <div class="message-bubble">
-                        <span class="message-tag" v-if="msg.label">{{ msg.label }}11</span>
+                        <span class="message-tag" v-if="msg.label">{{ msg.label }}</span>
                         <div v-if="msg.label === '图片消息'" :key="'img-' + index">
                           <div v-if="editingIndex === index" class="message-edit">
                             <input ref="editInputRef" v-model="editingContent" class="edit-input" @keydown="handleKeydown" @blur="handleBlur" />
@@ -505,8 +505,9 @@ const handleMessageImageDoubleClick = (index: number) => {
 const handleImageUpload = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
-  if (!file || !file.type.startsWith('image/')) {
-    if (!file.type?.startsWith('image/')) ElMessage.error('请选择图片文件')
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
     return
   }
   uploading.value = true
@@ -529,8 +530,12 @@ const handleMessageImageUpload = async (event: Event) => {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0]
   const index = editingImageIndex.value
-  if (!file || index < 0 || !file.type.startsWith('image/')) {
-    if (!file.type?.startsWith('image/')) ElMessage.error('请选择图片文件')
+  if (!file || index < 0) {
+    editingImageIndex.value = -1
+    return
+  }
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
     editingImageIndex.value = -1
     return
   }

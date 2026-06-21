@@ -150,7 +150,6 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { getContentTypeLabel } from '../utils/messageFormatter'
 import type { MessageItem, QuoteInfo } from '../utils/messageFormatter'
 
 const emit = defineEmits<{
